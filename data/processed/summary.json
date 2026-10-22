@@ -1,0 +1,29 @@
+{
+  "source_url": "https://api.tvmaze.com/shows",
+  "total_shows": 240,
+  "shows_with_rating": 236,
+  "average_rating": 7.58,
+  "top_genres": {
+    "Drama": 154,
+    "Comedy": 66,
+    "Crime": 57,
+    "Action": 55,
+    "Thriller": 41
+  },
+  "top_languages": {
+    "English": 236,
+    "Japanese": 4
+  },
+  "status_counts": {
+    "Ended": 217,
+    "Running": 22,
+    "To Be Determined": 1
+  },
+  "top_rated_shows": [
+    "Breaking Bad",
+    "Firefly",
+    "Game of Thrones",
+    "The Wire",
+    "Death Note"
+  ]
+}
