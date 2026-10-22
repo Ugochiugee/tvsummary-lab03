@@ -1,40 +1,66 @@
-# TV Show Summary
+# TV Summary
 
-Downloads the first page of shows from the TVMaze API and summarizes them: how many are rated, the average rating, the most common genres and languages, how many shows have each status, and the top rated shows. It gives a quick picture of what the catalogue contains.
+An installable package that downloads the first page of shows from the TVMaze API and summarizes them: how many are rated, the average rating, the most common genres and languages, status counts and the top rated shows.
 
 ## Data source
-`https://api.tvmaze.com/shows` returns the first page of the TVMaze catalogue. One record is one TV show, with its name, genres, language, status and rating. The page holds about 240 shows.
+`https://api.tvmaze.com/shows` returns the first page of the TVMaze catalogue. One record is one TV show. The page holds about 240 shows.
 
 ## Setup
 ```
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+conda env create -f environment.yml
+conda activate tvsummary
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Run
 ```
-python records.py
+python main.py
 ```
 
 The summary is written to `data/processed/summary.json`.
 
-## Example output
-See `data/processed/summary.json`. It records the source URL, the number of shows processed, how many have a rating and their average, the five most common genres and languages, the count of shows per status, and the five top rated shows.
+## Test
+```
+python -m unittest discover -s tests
+```
 
-## Data quirks
-- **A show can have several genres, or none.** `shows_per_genre` loops over each show's genre list and counts the show once in each genre. An empty or missing list adds nothing, rather than being counted as a genre such as "None".
-- **Some shows have no rating.** The rating is nested as `rating.average` and can be null. `get_rating` returns `None` for those, and they are left out of the average and the top rated list instead of being counted as 0.
-- **Some shows have no language or status.** These are skipped in those counts rather than being grouped under an empty label.
-- **Records without a name** cannot be reported, so `clean_records` drops them. It also drops a repeated show id so a show is never counted twice.
+## Layout
+- `main.py`: thin entry point. Wires the pieces together and prints the result or the error message.
+- `src/tvsummary/config.py`: the source URL, timeout and output path, so settings live in one place.
+- `src/tvsummary/models.py`: the `Show` record class, so cleaning of one record happens in one place.
+- `src/tvsummary/sources.py`: `TvMazeSource`, the only module that imports `requests`, so network code is kept apart from the logic.
+- `src/tvsummary/aggregations.py`: the `Aggregation` base class and one subclass per result in the summary.
+- `src/tvsummary/report.py`: builds the summary from a list of aggregations and writes it to JSON.
+- `tests/test_models.py`: unittest tests on hand-made shows, with no network.
+
+## What moved where
+
+| Lab 02 function (records.py) | Where it lives now |
+|---|---|
+| `fetch_records` | `sources.TvMazeSource.fetch` |
+| `clean_records` | `sources.TvMazeSource.fetch` (skips records with no name and repeated ids) |
+| `get_rating` | `models.Show.__init__` (sets `show.rating`) |
+| `top_counts` | the sorting inside `GenreCounts.compute` and `LanguageCounts.compute` |
+| `count_rated` | `aggregations.RatedCount.compute` |
+| `average_rating` | `aggregations.AverageRating.compute` |
+| `shows_per_genre` | `aggregations.GenreCounts.compute` |
+| `shows_per_language` | `aggregations.LanguageCounts.compute` |
+| `shows_per_status` | `aggregations.StatusCounts.compute` |
+| `top_rated` | `aggregations.TopRated.compute` |
+| `len(records)` in `build_summary` | `aggregations.ShowCount.compute` |
+| `build_summary` | `report.build_summary` |
+| `write_summary` | `report.write_summary` |
+| `main` | `main.py` `main()` |
+| `SOURCE_URL`, `TIMEOUT`, `OUTPUT` | `config.py` |
 
 ## Design choices
-- **list**: the records arrive as a list, and the top rated shows are an ordered list, because order matters there.
-- **dict**: each grouping (genres, languages, statuses) is a dictionary from a label to a count, built with `Counter`, which is a dict subclass. The summary itself is a dict because it maps to a JSON object.
-- **set**: `seen_ids` in `clean_records` tracks show ids already kept. Checking membership in a set is fast and the order does not matter.
-- **tuple**: `(rating, name)` pairs in `top_rated` and `(count, label)` sort keys. A tuple sorts by its first item, then its second, which breaks ties by name.
-- Comprehensions build the rating list in `average_rating`, the rated pairs in `top_rated` and the counts in `shows_per_language` and `shows_per_status`.
+- **Show** exists so that every check for missing or malformed values (no genres, no rating, an empty name, a blank language) happens once, when the record is created. The aggregations can then trust that `show.genres` is a list and `show.rating` is a float or `None`.
+- **TvMazeSource** exists so that downloading is in one class. It turns raw dicts into `Show` objects and turns any request or JSON failure into one `RuntimeError` with a clear message, so `main.py` never sees a `requests` exception.
+- **Aggregation** is the base class. It holds the summary key and `top_n`, and defines `compute`. Each subclass overrides `compute`. `report.build_summary` loops over a list of aggregation objects and calls `compute` on each without checking which subclass it is.
+- **Adding one more aggregation** means writing a subclass with a `key` and a `compute` method, and adding an instance to `default_aggregations()` in `report.py`. Nothing else changes.
 
 ## Known limitations
-- Only the first page of shows is downloaded, not the whole catalogue.
+- Only the first page of shows is downloaded.
 - TVMaze can add or edit shows, so the numbers may change between runs.
+- Tests cover the record class and three aggregations only. A fuller suite is planned for Lab 04.
